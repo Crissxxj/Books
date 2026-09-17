@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Genero {
+  FANTASIA
+  DARK_ROMANCE
+  ROMANCE_VAINILLA
+  SPORT_ROMANCE
+}
+
+enum EstadoPedido {
+  PENDIENTE
+  PAGADO
+  CANCELADO
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  password      String? // null cuando el usuario entra solo con Google
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+
+  accounts  Account[]
+  sessions  Session[]
+  favoritos Favorito[]
+  carrito   ItemCarrito[]
+  pedidos   Pedido[]
+}
+
+// Modelos requeridos por el adaptador de NextAuth
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Libro {
+  id          String   @id @default(cuid())
+  titulo      String
+  autor       String
+  descripcion String   @db.Text
+  precio      Float
+  portadaUrl  String
+  genero      Genero
+  stock       Int      @default(20)
+  destacado   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  favoritos      Favorito[]
+  itemsCarrito   ItemCarrito[]
+  itemsPedido    ItemPedido[]
+
+  @@index([genero])
+}
+
+model Favorito {
+  id        String   @id @default(cuid())
+  userId    String
+  libroId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  libro Libro @relation(fields: [libroId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, libroId])
+}
+
+model ItemCarrito {
+  id        String   @id @default(cuid())
+  userId    String
+  libroId   String
+  cantidad  Int      @default(1)
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  libro Libro @relation(fields: [libroId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, libroId])
+}
+
+model Pedido {
+  id                String       @id @default(cuid())
+  userId            String
+  total             Float
+  estado            EstadoPedido @default(PENDIENTE)
+  stripeSessionId   String?      @unique
+  createdAt         DateTime     @default(now())
+
+  user  User         @relation(fields: [userId], references: [id])
+  items ItemPedido[]
+}
+
+model ItemPedido {
+  id       String @id @default(cuid())
+  pedidoId String
+  libroId  String
+  cantidad Int
+  precio   Float
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  libro  Libro  @relation(fields: [libroId], references: [id])
+}
