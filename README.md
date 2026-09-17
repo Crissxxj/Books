@@ -223,3 +223,4 @@ La forma más simple es **Vercel** (creadores de Next.js, tienen plan gratuito):
   configuración de seguridad de Stripe, agrega páginas de política de privacidad/devoluciones, y considera
   agregar límites de tasa (rate limiting) a las rutas de API públicas.
 "# Books" 
+"# TIENDA-LIBROS" 
