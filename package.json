@@ -11,6 +11,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
+    "covers:fetch": "tsx scripts/fetch-covers.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -21,7 +22,6 @@
     "next-auth": "^4.24.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "stripe": "^16.12.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -128,7 +128,7 @@ export default function CarritoCliente({ itemsIniciales }: { itemsIniciales: Ite
           disabled={cargandoPago}
           className="w-full mt-6 bg-wine text-paper rounded-full py-3 font-medium hover:bg-wine-dark transition-colors disabled:opacity-60"
         >
-          {cargandoPago ? "Redirigiendo a pago..." : "Pagar con Stripe"}
+          {cargandoPago ? "Redirigiendo a pago..." : "Pagar con tarjeta"}
         </button>
       </aside>
     </div>

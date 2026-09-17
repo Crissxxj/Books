@@ -1,8 +1,8 @@
 # Papel & Tinta — Librería online
 
 Tienda de libros con catálogo (fantasía, dark romance, romance vainilla y sport romance), favoritos, carrito,
-cuentas de usuario (correo/contraseña y Google), pagos reales con Stripe, y un panel de administrador para
-gestionar el catálogo.
+cuentas de usuario (correo/contraseña y Google), pagos reales con **Payphone** (Ecuador), y un panel de
+administrador para gestionar el catálogo.
 
 ## Stack usado
 
@@ -10,7 +10,7 @@ gestionar el catálogo.
 - **Tailwind CSS** — estilos
 - **PostgreSQL** + **Prisma ORM** — base de datos
 - **NextAuth.js** — autenticación (Google OAuth + correo/contraseña)
-- **Stripe Checkout** — pagos reales (tarjeta)
+- **Payphone (Botón de Pago)** — pagos reales con tarjeta, pensado para comercios en Ecuador
 
 ---
 
@@ -23,11 +23,13 @@ gestionar el catálogo.
    - **Opción fácil (recomendada):** una base de datos gratuita en la nube, sin instalar nada local:
      - [Neon](https://neon.tech) o [Supabase](https://supabase.com) (ambos tienen plan gratuito). Al crear el
        proyecto te dan una cadena de conexión `postgresql://...` que va directo en `DATABASE_URL`.
+     - Si despliegas en Render, también puedes crear ahí mismo una base de datos PostgreSQL administrada
+       (ver sección 8).
    - **Opción local:** instalar PostgreSQL en tu máquina → https://www.postgresql.org/download/
 4. **Visual Studio Code** → https://code.visualstudio.com
    - Extensiones recomendadas: "Prisma" y "Tailwind CSS IntelliSense"
-5. Una cuenta en **Stripe** (gratis) → https://dashboard.stripe.com/register
-6. Una cuenta en **Google Cloud** (gratis) para el login con Google → https://console.cloud.google.com
+5. Una cuenta en **Google Cloud** (gratis) para el login con Google → https://console.cloud.google.com
+6. Una cuenta en **Payphone Business** (gratis, se registra con cédula o RUC) → https://business.payphone.app
 
 ---
 
@@ -39,7 +41,7 @@ Abre esta carpeta en VS Code y en la terminal integrada ejecuta:
 npm install
 ```
 
-Esto instala Next.js, Prisma, NextAuth, Stripe y todo lo demás.
+Esto instala Next.js, Prisma, NextAuth y todo lo demás.
 
 ---
 
@@ -55,7 +57,7 @@ Y completa cada valor en `.env` (abajo se explica cómo obtener cada uno).
 
 ### 3.1 Base de datos (`DATABASE_URL`)
 
-Pega la cadena de conexión de Neon/Supabase, o si usas PostgreSQL local algo como:
+Pega la cadena de conexión de Neon/Supabase/Render, o si usas PostgreSQL local algo como:
 
 ```
 DATABASE_URL="postgresql://postgres:tu_password@localhost:5432/libreria?schema=public"
@@ -87,26 +89,30 @@ Pega el resultado en `NEXTAUTH_SECRET`. Deja `NEXTAUTH_URL="http://localhost:300
    `http://localhost:3000/api/auth/callback/google`
 7. Copia el **Client ID** y **Client Secret** generados a tu `.env`
 
-### 3.4 Pagos con Stripe (`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`)
+### 3.4 Pagos con Payphone (`PAYPHONE_TOKEN`, `PAYPHONE_STOREID`)
 
-1. Entra a https://dashboard.stripe.com/test/apikeys (modo de **prueba**, no cobra dinero real todavía)
-2. Copia la **Clave secreta** (`sk_test_...`) → `STRIPE_SECRET_KEY`
-3. Copia la **Clave publicable** (`pk_test_...`) → `STRIPE_PUBLISHABLE_KEY`
-4. Para el webhook (necesario para confirmar pagos automáticamente):
-   - Instala Stripe CLI: https://docs.stripe.com/stripe-cli
-   - Ejecuta:
-     ```bash
-     stripe login
-     stripe listen --forward-to localhost:3000/api/webhooks/stripe
-     ```
-   - Este comando imprime un `whsec_...`. Cópialo en `STRIPE_WEBHOOK_SECRET`.
-   - Deja esta terminal corriendo mientras pruebas pagos localmente.
-5. Cuando quieras aceptar pagos reales, cambia tu cuenta de Stripe a modo **Live**, repite estos pasos con
-   las claves `sk_live_...` / `pk_live_...`, y configura el webhook de producción desde el Dashboard de
-   Stripe (Developers → Webhooks) apuntando a `https://tu-dominio.com/api/webhooks/stripe`.
+Stripe no opera con comercios domiciliados en Ecuador, así que este proyecto usa **Payphone**, una pasarela
+ecuatoriana que sí permite abrir cuenta con cédula (no necesitas RUC ni empresa constituida para el ambiente
+de pruebas).
 
-**Tarjeta de prueba de Stripe** (para probar el checkout sin gastar dinero real):
-`4242 4242 4242 4242`, cualquier fecha futura, cualquier CVC.
+1. Regístrate en https://business.payphone.app
+2. Dentro de tu cuenta, crea un usuario con el rol **"Desarrollador"**
+3. Entra a **Payphone Developer** y crea una nueva aplicación de tipo **"WEB"**
+   - **Dominio web:** para desarrollo local puedes usar `http://localhost:3000` (Payphone lo permite sin SSL
+     solo para pruebas). Para producción, usa el dominio real de tu sitio en Render.
+   - **URL de respuesta:** `http://localhost:3000/checkout/success` (o tu dominio de producción)
+4. Copia el **Token** (Bearer Token) → `PAYPHONE_TOKEN`
+5. Copia el **StoreId** → `PAYPHONE_STOREID`
+6. Mientras estés en el **ambiente de pruebas**, todas las transacciones se aprueban automáticamente: no se
+   conecta con bancos reales y puedes usar cualquier dato de tarjeta ficticio válido. No necesitas nada como
+   la CLI de Stripe ni un webhook aparte: Payphone confirma el pago cuando el cliente vuelve a
+   `/checkout/success`.
+7. Cuando quieras cobrar de verdad, cambia a **producción** desde Payphone Business (ver su guía "Pruebas y
+   paso a producción") y actualiza el dominio autorizado de tu aplicación al de Render.
+
+> Si en el futuro quieres una segunda opción de pago en Ecuador, las alternativas equivalentes son
+> **Datafast** y **Kushki**; ambas requieren RUC y proceso de aprobación más largo, por eso Payphone es la
+> mejor opción para empezar.
 
 ---
 
@@ -133,9 +139,33 @@ Puedes explorar visualmente la base de datos con:
 npm run db:studio
 ```
 
+> **Nota sobre el cambio de esquema:** el modelo `Pedido` ahora usa el campo `pagoExternoId` en vez de
+> `stripeSessionId`. Si ya tenías datos cargados con el esquema anterior, `npm run db:push` te pedirá
+> confirmar el cambio de columna (los pedidos de prueba antiguos perderán ese dato puntual, nada más).
+
 ---
 
-## 5. Correr el proyecto en desarrollo
+## 5. Agregar portadas reales a los libros
+
+El catálogo de ejemplo trae portadas *placeholder* (un color por género con el título superpuesto). Para
+poner portadas reales sin tener que buscarlas una por una, hay un script que las busca automáticamente en
+**Open Library** (base de datos pública y gratuita de portadas de libros, usada por miles de sitios y apps
+de lectura):
+
+```bash
+npm run covers:fetch
+```
+
+Esto recorre todos los libros de tu base de datos, busca la portada por título + autor y actualiza
+`portadaUrl`. Los libros que no encuentre quedan con el placeholder anterior — puedes completarlos a mano
+desde `/admin/libros` pegando cualquier URL de imagen en el campo "URL de portada".
+
+Si quieres usar imágenes de otro proveedor (Google Books, tu propio storage en Cloudinary/S3, etc.),
+recuerda agregar ese dominio a `images.remotePatterns` en `next.config.js`, o Next.js rechazará la imagen.
+
+---
+
+## 6. Correr el proyecto en desarrollo
 
 ```bash
 npm run dev
@@ -146,15 +176,15 @@ Abre http://localhost:3000
 - Catálogo y filtros por género: página principal
 - Crear cuenta / entrar con Google o correo: `/registro` y `/login`
 - Favoritos: `/favoritos`
-- Carrito y pago con Stripe: `/carrito`
+- Carrito y pago con Payphone: `/carrito`
 - Panel de administrador (requiere el usuario Admin): `/admin`
 
-Recuerda tener corriendo `stripe listen --forward-to localhost:3000/api/webhooks/stripe` en otra terminal
-para que los pagos se confirmen automáticamente.
+Al pagar en el ambiente de pruebas de Payphone, todas las transacciones se aprueban automáticamente —no
+necesitas dejar ningún proceso extra corriendo en otra terminal, a diferencia del webhook de Stripe.
 
 ---
 
-## 6. Panel de administrador
+## 7. Panel de administrador
 
 Inicia sesión con `admin@papelytinta.com` / `Admin123!` (o convierte tu propio usuario en admin cambiando su
 `role` a `ADMIN` desde `npm run db:studio`). Desde `/admin` puedes:
@@ -164,13 +194,46 @@ Inicia sesión con `admin@papelytinta.com` / `Admin123!` (o convierte tu propio 
 - Agregar libros nuevos (`/admin/libros/nuevo`) con título, autor, descripción, precio, stock, género y portada
 - Editar o eliminar libros existentes
 
-Las portadas del catálogo de ejemplo usan imágenes generadas automáticamente (placeholder). Para producción,
-sube tus propias portadas a un servicio como Cloudinary, S3 o Vercel Blob y pega esa URL en el campo
-"URL de portada".
+---
+
+## 8. Publicar el sitio en Render
+
+1. Sube el proyecto a un repositorio de GitHub (ya lo tienes en `github.com/Crissxxj/Books`)
+2. En https://dashboard.render.com, crea primero la base de datos:
+   - **New +** → **PostgreSQL** → elige un nombre y la región más cercana → plan Free
+   - Cuando esté lista, copia su **"Internal Database URL"**
+3. Crea el servicio web:
+   - **New +** → **Web Service** → conecta tu repo `Books`
+   - **Runtime:** Node
+   - **Build Command:** `npm install && npm run build`
+   - **Start Command:** `npm start`
+4. En la pestaña **Environment** del Web Service, agrega todas las variables de tu `.env`:
+   - `DATABASE_URL` → la Internal Database URL del paso 2
+   - `NEXTAUTH_SECRET`
+   - `NEXTAUTH_URL` → la URL pública que te da Render (ej. `https://papel-y-tinta.onrender.com`)
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+   - `PAYPHONE_TOKEN`, `PAYPHONE_STOREID`
+   - `NEXT_PUBLIC_SITE_URL` → la misma URL pública de Render
+5. Actualiza las URLs autorizadas:
+   - En Google Cloud: agrega `https://tu-app.onrender.com` a los orígenes y
+     `https://tu-app.onrender.com/api/auth/callback/google` a las redirecciones
+   - En Payphone Developer: cambia el dominio autorizado de tu aplicación "WEB" al dominio de Render
+6. Antes del primer deploy (o desde la shell de Render una vez desplegado), corre las migraciones y el seed:
+   ```bash
+   npx prisma db push
+   npm run db:seed        # opcional, solo si quieres el catálogo de ejemplo
+   npm run covers:fetch   # opcional, para las portadas reales
+   ```
+   Render permite abrir una "Shell" del servicio ya desplegado para correr estos comandos una sola vez.
+7. Cuando quieras cobrar de verdad, pasa tu cuenta de Payphone a modo producción (ver sección 3.4).
+
+> El plan Free de Render "duerme" el servicio tras un rato sin tráfico y tarda unos segundos en despertar en
+> la siguiente visita — normal para un proyecto de estudio, pero tenlo en cuenta si haces una demostración en
+> vivo.
 
 ---
 
-## 7. Estructura del proyecto
+## 9. Estructura del proyecto
 
 ```
 src/
@@ -179,7 +242,7 @@ src/
     libro/[id]/               → detalle de libro
     favoritos/                → favoritos del usuario
     carrito/                  → carrito + botón de pago
-    checkout/success/         → confirmación tras pagar
+    checkout/success/         → recibe la redirección de Payphone y confirma el pago
     login/  registro/         → autenticación
     admin/                     → panel de administrador (protegido)
     api/
@@ -188,10 +251,11 @@ src/
       libros/                  → API pública/admin del catálogo
       favoritos/               → API de favoritos
       carrito/                 → API del carrito
-      checkout/                → crea la sesión de pago en Stripe
-      webhooks/stripe/         → confirma el pago y actualiza el pedido
+      checkout/                → prepara la transacción en Payphone
   components/                 → Navbar, BookCard, botones de carrito/favoritos, etc.
-  lib/                        → clientes de Prisma, NextAuth y Stripe
+  lib/                        → clientes de Prisma, NextAuth y Payphone
+scripts/
+  fetch-covers.ts              → busca portadas reales en Open Library y las guarda en la BD
 prisma/
   schema.prisma                → modelos de la base de datos
   seed.ts                       → catálogo inicial de libros + usuarios de ejemplo
@@ -199,28 +263,17 @@ prisma/
 
 ---
 
-## 8. Publicar el sitio (opcional)
-
-La forma más simple es **Vercel** (creadores de Next.js, tienen plan gratuito):
-
-1. Sube el proyecto a un repositorio de GitHub
-2. Importa el repositorio en https://vercel.com/new
-3. Agrega todas las variables de `.env` en la configuración del proyecto en Vercel
-4. Cambia `NEXTAUTH_URL` y `NEXT_PUBLIC_SITE_URL` a tu dominio real (`https://tu-sitio.vercel.app`)
-5. Actualiza las URLs autorizadas en Google Cloud y el webhook de Stripe para que apunten a ese dominio
-6. Usa una base de datos PostgreSQL en la nube (Neon/Supabase funcionan perfecto con Vercel)
-
----
-
-## 9. Notas importantes
+## 10. Notas importantes
 
 - Los libros del catálogo son obras reales conocidas (título/autor/género), pero las **descripciones son
   redactadas originalmente para este proyecto**, no copiadas de contraportadas. Puedes editarlas libremente
   desde el panel de administrador.
-- Las portadas de ejemplo son *placeholders* generados automáticamente; para un sitio real deberías subir
-  portadas propias o con licencia adecuada.
+- Las portadas se obtienen de Open Library, una base de datos pública pensada justamente para identificar
+  libros por su cubierta (el mismo tipo de uso que hacen catálogos de librerías reales); si más adelante
+  cambias a portadas propias o de otro proveedor, actualiza `images.remotePatterns` en `next.config.js`.
 - Este proyecto es una base sólida y funcional, pero antes de manejar pagos reales de producción revisa la
-  configuración de seguridad de Stripe, agrega páginas de política de privacidad/devoluciones, y considera
-  agregar límites de tasa (rate limiting) a las rutas de API públicas.
-"# Books" 
-"# TIENDA-LIBROS" 
+  configuración de seguridad de tu cuenta de Payphone, agrega páginas de política de privacidad/devoluciones,
+  y considera agregar límites de tasa (rate limiting) a las rutas de API públicas.
+- **Nunca subas tu archivo `.env` a GitHub.** Ya está en `.gitignore` y, al revisar el repositorio, no
+  aparece en el historial de commits — así debe seguir. Si alguna vez compartes este proyecto (zip, otro
+  computador, etc.), verifica que el `.env` con tus claves reales no vaya incluido.

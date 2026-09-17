@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuthSession } from "@/lib/auth";
-import { stripe } from "@/lib/stripe";
+import { prepararPagoPayphone } from "@/lib/payphone";
 
 export async function POST() {
   const session = await getAuthSession();
@@ -18,7 +18,8 @@ export async function POST() {
 
   const total = items.reduce((acc, it) => acc + it.cantidad * it.libro.precio, 0);
 
-  // Creamos el pedido en estado PENDIENTE antes de mandar a Stripe
+  // Creamos el pedido en estado PENDIENTE antes de mandar a Payphone.
+  // Usamos su id como clientTransactionId: es único y nos permite ubicarlo al confirmar.
   const pedido = await prisma.pedido.create({
     data: {
       userId: session.user.id,
@@ -34,32 +35,23 @@ export async function POST() {
     }
   });
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  try {
+    const { url, paymentId } = await prepararPagoPayphone({
+      amount: total,
+      clientTransactionId: pedido.id,
+      reference: `Pedido ${pedido.id} - Papel & Tinta`,
+      email: session.user.email
+    });
 
-  const checkoutSession = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    customer_email: session.user.email ?? undefined,
-    line_items: items.map((it) => ({
-      price_data: {
-        currency: "usd",
-        product_data: {
-          name: it.libro.titulo,
-          description: it.libro.autor
-        },
-        unit_amount: Math.round(it.libro.precio * 100)
-      },
-      quantity: it.cantidad
-    })),
-    success_url: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${siteUrl}/carrito`,
-    metadata: { pedidoId: pedido.id }
-  });
+    await prisma.pedido.update({
+      where: { id: pedido.id },
+      data: { pagoExternoId: paymentId }
+    });
 
-  await prisma.pedido.update({
-    where: { id: pedido.id },
-    data: { stripeSessionId: checkoutSession.id }
-  });
-
-  return NextResponse.json({ url: checkoutSession.url });
+    return NextResponse.json({ url });
+  } catch (e: any) {
+    // Si Payphone falla al preparar la transacción, no dejamos un pedido fantasma en PENDIENTE
+    await prisma.pedido.update({ where: { id: pedido.id }, data: { estado: "CANCELADO" } });
+    return NextResponse.json({ error: e.message || "No se pudo iniciar el pago" }, { status: 500 });
+  }
 }

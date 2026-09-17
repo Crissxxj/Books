@@ -128,7 +128,7 @@ model Pedido {
   userId            String
   total             Float
   estado            EstadoPedido @default(PENDIENTE)
-  stripeSessionId   String?      @unique
+  pagoExternoId     String?      @unique // id de pago de Payphone (antes: stripeSessionId)
   createdAt         DateTime     @default(now())
 
   user  User         @relation(fields: [userId], references: [id])
